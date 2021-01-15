@@ -25,8 +25,10 @@ districts_raw <- opq(bbox_berlin) %>%
   add_osm_feature("boundary", "administrative") %>%
   add_osm_feature("admin_level", c(10)) %>%
   osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
   encode_osm() 
 save(districts_raw, file = "data/districts.Rdat")
+
 
 ### Restaurants
 restaurants_raw <- opq(bbox = bbox_berlin) %>%
@@ -50,6 +52,7 @@ parks_raw <- opq(bbox = bbox_berlin) %>%
   encode_osm()
 save(parks_raw, file = "data/parks.Rdat")
 
+
 ### Forests
 forest_raw <- opq(bbox = bbox_berlin) %>%
   add_osm_feature(key = 'landuse', value = c('forest')) %>%
@@ -58,9 +61,13 @@ forest_raw <- opq(bbox = bbox_berlin) %>%
 save(forest_raw, file = "data/forest.Rdat")
 
 ### Tourist attraction
-attraction <- opq(bbox = bbox_berlin) %>%
-  add_osm_feature(key = 'tourism', value = 'attraction') %>%
+attraction_raw <- opq(bbox = bbox_berlin) %>%
+  add_osm_feature(key = 'tourism', value = c('attraction','zoo','museum')) %>%
   osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
   encode_osm() 
-attraction_raw <- attraction
 save(attraction_raw, file = "data/attraction.Rdat")
+
+
+
+
