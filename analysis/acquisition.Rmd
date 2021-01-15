@@ -1,0 +1,100 @@
+---
+title: "Data acquisition"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: show  
+    highlight: tango
+    number_sections: true
+---
+
+```{r}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, fig.height = 5, fig.width = 12)
+```
+
+# Packages
+```{r}
+library(tidyverse)
+library(sf)
+library(tmap)
+library(osmdata)
+library(RANN)
+```
+
+# Helper Functions
+```{r}
+source("R/helper.R")
+```
+
+
+# AirBnB
+```{r}
+airbnb_raw <- read_csv("data/listings.csv") 
+```
+
+# Open Street Map 
+```{r}
+berlin <- c(13.03, 52.34, 13.76, 52.7)
+```
+
+## Districts
+```{r}
+districts_raw <- opq(berlin) %>%
+  add_osm_feature("boundary", "administrative") %>%
+  add_osm_feature("admin_level", c(10)) %>%
+  osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
+  encode_osm() 
+```
+## Restaurants
+```{r}
+restaurants <- opq(bbox = berlin) %>%
+  add_osm_feature("amenity", "restaurant") %>%
+  osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
+  encode_osm()
+```
+
+## Transport
+```{r}
+stops <- opq(bbox = berlin) %>%
+  add_osm_feature(key = 'public_transport', value = 'stop_position') %>%
+  osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
+  encode_osm()  
+```
+
+## Parks
+```{r}
+parks <- opq(bbox = berlin) %>%
+  add_osm_feature(key = 'leisure', value = 'park') %>%
+  osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
+  encode_osm() 
+```
+
+## Forests
+```{r}
+forest <- opq(bbox = berlin) %>%
+  add_osm_feature(key = 'landuse', value = c('forest')) %>%
+  osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
+  encode_osm() 
+```
+
+## Tourist attraction
+```{r}
+attraction <- opq(bbox = berlin) %>%
+  add_osm_feature(key = 'tourism', value = 'attraction') %>%
+  osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
+  encode_osm() 
+
+attraction$osm_points %>% filter(!is.na(name)) %>% tm_shape() + tm_dots(size = 0.5, col = "blue")
+attraction$osm_polygons %>% tm_shape() + tm_dots(size = 0.5, col = "blue")
+
+attraction$osm_multipolygons %>% View()
+```
+

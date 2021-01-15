@@ -1,0 +1,239 @@
+---
+title: ""
+author: "Tillmann Schwörer"
+date: "WS 2020/21"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: show  
+    highlight: tango
+    number_sections: true
+---
+
+```{r}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, fig.height = 5, fig.width = 12)
+```
+
+# Packages
+```{r}
+library(tidyverse)
+library(sf)
+library(tmap)
+library(osmdata)
+library(RANN)
+```
+
+# Helper Functions
+```{r}
+encode_osm <- function(list){
+    # For all data frames in query result
+    for (df in (names(list)[map_lgl(list, is.data.frame)])) {
+        last <- length(list[[df]])
+        # For all columns except the last column ("geometry")
+        for (col in names(list[[df]])[-last]){
+            # Change the encoding to UTF8
+            Encoding(list[[df]][[col]]) <- "UTF-8"
+        }
+    }
+    return(list)
+}
+```
+
+
+# AirBnB
+```{r}
+data <- read_csv("data/listings.csv") 
+df <- data %>% 
+  select(id, listing_url, amenities, host_response_time, neighbourhood_cleansed,
+         neighbourhood_group_cleansed, latitude, longitude, property_type, room_type, 
+         accommodates, bathrooms, bedrooms, beds, price, number_of_reviews, 
+         review_scores_rating) %>% 
+  mutate(wifi = str_detect(amenities, "Wifi"),
+        tv = str_detect(amenities, "TV"),
+        bed_linens = str_detect(amenities, "Bed linens"),
+        parking = str_detect(amenities, "parking"),
+        garden = str_detect(amenities, "Garden")) %>%
+  mutate(price = as.numeric(str_sub(price, 2))) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
+```
+
+
+# Open Street Map 
+## Districts
+```{r}
+berlin <- c(13.03, 52.34, 13.76, 52.7)
+districts <- opq(berlin) %>%
+  add_osm_feature("boundary", "administrative") %>%
+  add_osm_feature("admin_level", c(10)) %>%
+  osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
+  encode_osm() 
+
+districts <- districts$osm_multipolygons %>% select(name)
+df <- df %>% st_join(districts, join = st_covered_by)
+
+```
+
+## Restaurants
+
+```{r}
+restaurants <- opq(bbox = berlin) %>%
+  add_osm_feature("amenity", "restaurant") %>%
+  osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
+  encode_osm()
+```
+
+## Public Transport
+
+```{r}
+transport_stops <- opq(bbox = berlin) %>%
+  add_osm_feature(key = 'public_transport', value = 'stop_position') %>%
+  osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
+  encode_osm()  
+
+transport_stops <- transport_stops$osm_points %>% 
+  filter(railway %in% c("stop","tram_stop")) 
+
+transport_stops %>% tm_shape() + tm_dots(col = "railway")
+```
+
+## Parks
+```{r}
+parks <- opq(bbox = berlin) %>%
+  add_osm_feature(key = 'leisure', value = 'park') %>%
+  osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
+  encode_osm() 
+
+forest <- opq(bbox = berlin) %>%
+  add_osm_feature(key = 'landuse', value = c('forest')) %>%
+  osmdata_sf() %>% 
+  unname_osmdata_sf() %>%
+  encode_osm() 
+
+forest$osm_multipolygons %>% tm_shape() + tm_fill(col = "osm_id") + tm_text(text = "name")
+names(forest$osm_multipolygons)
+
+parks$osm_multipolygons[1:50,] %>% View()
+tmap_mode("view")
+parks$osm_multipolygons %>% tm_shape() + tm_fill(col = "") + tm_text(text = "name")
+
+green_forest <- forest$osm_multipolygons %>% select(osm_id, name) %>% mutate(type = "forest")
+green_park <- parks$osm_multipolygons %>% select(osm_id, name) %>% mutate(type = "park")
+green <- bind_rows(green_forest, green_park)
+```
+```{r}
+bla <- df[2,] %>% st_transform(3035) # Reproject to EPSG:3035 as mentioned above
+buffer <- st_buffer(bla, dist = 2000)
+green2 <- green %>% st_transform(3035)
+rm(blon)
+blon <- st_join(buffer, green2, join = st_overlaps, left = FALSE)
+tm_shape(blon) + tm_borders()
+tm_shape(bla) + tm_dots() + 
+  tm_shape(blon) + tm_borders()
+
+green_dist_list <- nngeo::st_nn(df, green_forest, maxdist = 5000, k = 1, returnDist = TRUE)
+df <- df %>% mutate(transport_stop_dist = as.numeric(transport_stop_dist_list$dist)
+```
+
+
+# Convert data into features 
+## Polygons to points
+```{r}
+polygons_to_points <- function(osm){
+  points <- osm[["osm_points"]]           
+  polygons <- osm[["osm_polygons"]]
+  points_not_covered <- points[!lengths(st_intersects(points, polygons)), ]
+  polygons_centroids <- polygons %>% st_centroid()
+  bind_rows(points_not_covered, polygons_centroids)
+}
+
+restaurants_points <- polygons_to_points(osm = restaurants)
+```
+
+
+
+## Calculate distances
+```{r}
+
+airbnb_coord <- st_coordinates(df$geometry)
+restaurants_coord <- st_coordinates(restaurants_points)
+transport_stops_coord <- st_coordinates(transport_stops)
+
+restaurants_closest <- nn2(data = restaurants_coord, query = airbnb_coord, k = 500, searchtype = "radius", 
+               radius = 0.005,eps = 0.0)
+
+transport_stop_dist_list <- nngeo::st_nn(df, transport_stops, maxdist = 20000, k = 1, returnDist = TRUE)
+df <- df %>% mutate(transport_stop_dist = as.numeric(transport_stop_dist_list$dist))
+df <- df %>% mutate(n_close_rest = rowSums(restaurants_closest$nn.idx>0))
+df %>% 
+  group_by(name) %>%
+  summarise(transport_stop_dist = mean(transport_stop_dist)) %>%
+  st_drop_geometry() %>%
+  inner_join(districts, by="name") %>%
+  st_as_sf() %>%
+  tm_shape() + 
+  tm_borders() +
+  tm_fill(col = "transport_stop_dist")
+
+```
+
+
+
+
+# Visualization 
+
+```{r}
+tmap_mode("view")
+tm_shape(osm$osm_multipolygons, name = "Districts") + tm_borders() +
+  tm_fill(id = "name") +
+  tm_shape(df) + tm_dots(col = "review_scores_rating", size = 0.01) +
+  tm_shape(osm_restaurant$osm_points) + tm_dots(col = "blue", size = 0.01)
+
+
+```
+
+
+# Regression 
+## Define Visualization Function
+```{r}
+vis_residuals <- function(model, data, mode = "plot", textsize = 1){
+  districts_n <- df %>% count(name) %>% st_drop_geometry()
+  tmap_mode(mode)
+  model %>% 
+    broom::augment_columns(data) %>%
+    group_by(name) %>%
+    summarise(error = mean(.resid)) %>% 
+    inner_join(districts, by = "name") %>%
+    inner_join(districts_n, by = "name") %>%
+    st_as_sf() %>% 
+    tm_shape() + 
+    tm_fill(col = "error", n = 8) + 
+    tm_text(text = "n", size = textsize) +
+    tm_borders()  
+}
+```
+
+
+```{r}
+df2 <- df %>% filter(accommodates==3)
+model <- lm(price ~ room_type + bedrooms, data = df2)
+vis_residuals(model, df2, "view", textsize = 0.7)
+```
+
+```{r}
+model <- lm(price ~ room_type + bedrooms + I(cut_number(n_close_rest, 4)), data = df2)
+summary(model)
+vis_residuals(model, df2)
+```
+```{r}
+df2$transport_stop_dist
+model <- lm(price ~ room_type + bedrooms + wifi + tv + bed_linens + parking + garden + n_close_rest + I(n_close_rest^2) + I(transport_stop_dist>1000), data = df2)
+summary(model)
+vis_residuals(model, df2, mode = "view")
+```
+

@@ -1,0 +1,79 @@
+---
+title: "Visualization"
+author: "Tillmann Schwörer"
+date: "WS 2020/21"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: show  
+    highlight: tango
+    number_sections: true
+---
+
+```{r}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, fig.height = 5, fig.width = 12)
+```
+
+# Packages
+```{r}
+library(tidyverse)
+library(sf)
+library(tmap)
+library(osmdata)
+library(RANN)
+```
+
+```{r}
+load("rdata/prepared_data.Rdat")
+```
+
+# Visualization
+## District level
+```{r}
+df %>% count(accommodates)
+
+# Aggregates
+df_districts <- df %>% 
+  filter(accommodates==2) %>%
+  group_by(name) %>% 
+  summarise(n = n(),
+            price = round(mean(price, na.rm=TRUE)),
+            stop_distance = round(mean(transport_stop_dist, na.rm=TRUE)) 
+            ) %>%
+  st_drop_geometry()
+
+tmap_mode("view")
+districts %>% 
+  inner_join(df_districts, by = "name") %>%
+  tm_shape() +
+  tm_fill("n", n = 10, convert2density = FALSE, style = "log10_pretty") +
+  tm_borders() +
+  tm_text(text = "price", size = 0.7)
+
+districts %>% 
+  inner_join(df_districts, by = "name") %>%
+  tm_shape() +
+  tm_fill("stop_distance", n = 10, style = "quantile") +
+  tm_borders() +
+  tm_text(text = "stop_distance", size = 0.7)
+
+
+districts %>% 
+  inner_join(df_districts, by = "name") %>%
+  tm_shape() +
+  tm_fill("price", n = 10, convert2density = FALSE) +
+  tm_borders() +
+  tm_dots(size = )
+```
+
+# Regression analysis
+```{r}
+df$forest
+skimr::skim(df$n_restaurants)
+model <- lm(I(log(price)) ~ room_type + I(accommodates/bedrooms) + I(log(accommodates)) +
+              wifi + tv + bed_linens + parking + garden + I(cut_number(n_restaurants, n = 5)) + I(cut_number(forest_dist, 5)) + I(cut_number(stop_dist, 5)), data = df)
+summary(model)
+```
+
