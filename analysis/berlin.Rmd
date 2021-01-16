@@ -39,12 +39,12 @@ vis_residuals <- function(model, data, mode = "plot", textsize = 1){
   model %>% 
     broom::augment_columns(data) %>% 
     group_by(name) %>%
-    summarise(error = mean(.resid)) %>% 
+    summarise(error = mean(.resid), fitted = mean(.fitted), price = mean(price)) %>% 
     inner_join(districts, by = "name") %>%
     inner_join(districts_n, by = "name") %>%
     st_as_sf() %>% 
     tm_shape() + 
-    tm_fill(col = "error", breaks = c(-70, -50, -30, -10, 10, 30, 50, 70)) + 
+    tm_fill(col = "error", breaks = c(-70, -50, -30, -10, 10, 30, 50, 70), popup.vars = c("error", "price", "fitted")) + 
     tm_text(text = "n", size = textsize) +
     tm_borders()  
 }
@@ -55,6 +55,7 @@ vis_residuals <- function(model, data, mode = "plot", textsize = 1){
 
 ```{r}
 model1 <- lm(price ~ room_type + size, data = df)
+broom::augment(model1)
 vis_residuals(model1, df, "view", textsize = 0.7)
 ```
 
