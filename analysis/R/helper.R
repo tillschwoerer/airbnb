@@ -30,19 +30,21 @@ polygons_to_points <- function(osm){
 }
 
 
+
+
 ## Define Visualization Function
 vis_residuals <- function(model, data, mode = "plot", textsize = 1){
   districts_n <- df %>% count(name) %>% st_drop_geometry()
   tmap_mode(mode)
   model %>% 
-    broom::augment_columns(data) %>%
+    broom::augment_columns(data) %>% 
     group_by(name) %>%
-    summarise(error = mean(.resid)) %>% 
+    summarise(error = mean(.resid), fitted = mean(.fitted), price = mean(price)) %>% 
     inner_join(districts, by = "name") %>%
     inner_join(districts_n, by = "name") %>%
     st_as_sf() %>% 
     tm_shape() + 
-    tm_fill(col = "error", n = 8) + 
+    tm_fill(col = "error", breaks = c(-70, -50, -30, -10, 10, 30, 50, 70), popup.vars = c("error", "price", "fitted")) + 
     tm_text(text = "n", size = textsize) +
     tm_borders()  
 }
