@@ -21,8 +21,9 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE, fig.height = 5, fig.widt
 library(tidyverse)
 library(sf)
 library(tmap)
-library(osmdata)
-library(RANN)
+load("data/prepared_data.Rdat")
+View(df)
+source("R/helper.R")
 ```
 
 # Regression 
@@ -31,31 +32,11 @@ library(RANN)
 options(scipen = 999)
 ```
 
-
-```{r}
-vis_residuals <- function(model, data, mode = "plot", textsize = 1){
-  districts_n <- df %>% count(name) %>% st_drop_geometry()
-  tmap_mode(mode)
-  model %>% 
-    broom::augment_columns(data) %>% 
-    group_by(name) %>%
-    summarise(error = mean(.resid), fitted = mean(.fitted), price = mean(price)) %>% 
-    inner_join(districts, by = "name") %>%
-    inner_join(districts_n, by = "name") %>%
-    st_as_sf() %>% 
-    tm_shape() + 
-    tm_fill(col = "error", breaks = c(-70, -50, -30, -10, 10, 30, 50, 70), popup.vars = c("error", "price", "fitted")) + 
-    tm_text(text = "n", size = textsize) +
-    tm_borders()  
-}
-  
-```
-
-
-
 ```{r}
 model1 <- lm(price ~ room_type + size, data = df)
+summary(model1)
 broom::augment(model1)
+jtools::plot_summs(model1, ci_level = 0.99, inner_ci_level = 0.9)
 vis_residuals(model1, df, "view", textsize = 0.7)
 ```
 
@@ -65,9 +46,65 @@ summary(model)
 vis_residuals(model, df, textsize = 0.7, mode = "view")
 ```
 ```{r}
-model3 <- lm(price ~ accommodates + size + room_type + tv + bed_linens + parking + garden + coffeemaker + pool + bathtub + cooking_basics + gym + altbau + n_restaurants + n_attractions + stop_dist, data = df)
+model3 <- lm(log(price) ~  beds  + room_type + accommodates + tv + bed_linens + parking + garden + coffeemaker + pool + bathtub + cooking_basics + gym + altbau + n_restaurants + n_attractions + stop_dist, data = df)
 summary(model3)
+augmented <- broom::augment(model3) %>% relocate(c(.fitted, .resid), .after = price)
+View(augmented)
+df[2107,]
+log(110)
+```
+
+
+```{r}
+jtools::plot_summs(model2, model3, scale = TRUE, ci_level = 0.99, inner_ci_level = 0.95)
+jtools::summ(model3, vifs = TRUE)
+jtools::plot_summs(model3, model3, model3, scale = TRUE, robust = list(FALSE, "HC0", "HC3"),
+           model.names = c("OLS", "HC0", "HC3"))
 
 vis_residuals(model3, df, textsize = 0.7, mode = "view")
+```
+
+```{r}
+m4 <- lm(price ~ size, filter(df, size < 150))
+summary(m4)
+m5 <- L1pack::lad(price ~ size, filter(df, size < 150))
+
+summary(m5)
+lad <- model.frame(m5) %>% mutate(.fitted = m5$fitted.values) 
+broom::augment(m4) %>%
+  ggplot(aes(x = size, y = price)) +
+  geom_point(alpha = 1) +  
+  #stat_bin_2d(alpha = 0.9, bins = 20) +  
+  geom_line(aes(y = .fitted, color = "least squares"), size = 2, ) +
+  geom_line(data = lad, aes(size, .fitted, color = "least absolute deviations"), size = 2) +
+  scale_fill_gradient2(name = "count", trans = "log10", low = "white", midpoint = 1, mid = 'grey', high = "red") +
+  scale_color_brewer(palette = "Set1") +
+  scale_x_continuous(breaks = seq.int(30,150,30), limits = c(0, 160)) +
+  scale_y_continuous(breaks = seq.int(0, 200, 50), limits = c(0, 230)) +
+  labs(color = "Model") +
+  theme_bw()
+
+```
+```{r}
+m <- lm(price ~ room_type + accommodates + tv  + wifi + pool + altbau + parking + n_attractions + n_restaurants + stop_dist, df)
+summary(m)
+jtools::j_summ(m,confint = TRUE, robust = TRUE)
+broom::augment_columns(data = df, m) %>% filter(id==8716837) %>% relocate(c(.fitted,.resid), .after = price)
+```
+
+```{r}
+df$description
+```
+
+
+```{r fig.width = 6, fig.height=4}
+tibble(
+  size = runif(50, 10, 180),
+  price = 35 + 0.5 * size + rnorm(50, 0, 13)
+) %>%
+  ggplot(aes(size, price)) +
+  geom_point() +
+  geom_smooth(method = 'lm', se = FALSE, color = '#4287f5', size = 1.5) +
+  theme_bw(base_size = 16)
 ```
 
