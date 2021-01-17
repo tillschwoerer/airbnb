@@ -114,7 +114,9 @@ tm_shape(districts) + tm_fill(col = "name")
 stops <- stops_raw$osm_points %>% 
   filter(railway %in% c("stop","tram_stop")) %>% 
   select(name)
-tm_shape(stops) + tm_dots(col = "name") 
+stops <- stops %>% count(name) %>% ungroup() %>% select(-n)
+stops <- stops %>% st_centroid()
+tm_shape(stops) + tm_dots(col = "name")
 
 
 ## Restaurans
@@ -156,7 +158,7 @@ coord_attractions <- st_coordinates(attractions$geometry)
 
 # Get Restaurants within 300m radius
 radius_restaurants <- nn2(data = coord_restaurants, query = coord_airbnb, k = 500, searchtype = "radius", radius = 300, eps = 0.0)
-radius_attractions <- nn2(data = coord_attractions, query = coord_airbnb, k = 300, searchtype = "radius", radius = 1000, eps = 0.0)
+radius_attractions <- nn2(data = coord_attractions, query = coord_airbnb, k = 200, searchtype = "radius", radius = 1000, eps = 0.0)
 
 
 # Count restaurants and add to data
@@ -168,7 +170,9 @@ df <- df %>% mutate(n_attractions = rowSums(radius_attractions$nn.idx>0))
 stop_distances <- nngeo::st_nn(df, stops, maxdist = 15000, k = 1, returnDist = TRUE)
 df <- df %>% mutate(stop_dist = round(as.numeric(stop_distances$dist)))
 
+
 ### Attractions
+attractions <- attractions %>% st_transform(crs = 4326)
 attraction_distances <- nngeo::st_nn(df, attractions, maxdist = 15000, k = 1, returnDist = TRUE)
 df <- df %>% mutate(attraction_dist = round(as.numeric(attraction_distances$dist)))
 
@@ -198,4 +202,4 @@ df <- df %>% mutate(attraction_dist = round(as.numeric(attraction_distances$dist
 # parks_large %>% tm_shape() + tm_fill("name")
 # parks_raw$osm_multipolygons %>% tm_shape() + tm_fill("black")
 
-save(df, file = "data/prepared_data.Rdat")
+save(df, restaurants, attractions, stops, districts, file = "data/prepared_data.Rdat")
