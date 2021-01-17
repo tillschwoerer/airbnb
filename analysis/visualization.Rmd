@@ -22,11 +22,10 @@ library(tidyverse)
 library(sf)
 library(tmap)
 library(osmdata)
-library(RANN)
 ```
 
 ```{r}
-load("rdata/prepared_data.Rdat")
+load("data/prepared_data.Rdat")
 ```
 
 # Visualization
@@ -40,11 +39,10 @@ df_districts <- df %>%
   group_by(name) %>% 
   summarise(n = n(),
             price = round(mean(price, na.rm=TRUE)),
-            stop_distance = round(mean(transport_stop_dist, na.rm=TRUE)) 
+            stop_distance = round(mean(stop_dist, na.rm=TRUE)) 
             ) %>%
   st_drop_geometry()
 
-tmap_mode("view")
 districts %>% 
   inner_join(df_districts, by = "name") %>%
   tm_shape() +
@@ -68,12 +66,51 @@ districts %>%
   tm_dots(size = )
 ```
 
-# Regression analysis
-```{r}
-df$forest
-skimr::skim(df$n_restaurants)
-model <- lm(I(log(price)) ~ room_type + I(accommodates/bedrooms) + I(log(accommodates)) +
-              wifi + tv + bed_linens + parking + garden + I(cut_number(n_restaurants, n = 5)) + I(cut_number(forest_dist, 5)) + I(cut_number(stop_dist, 5)), data = df)
-summary(model)
+# Single object and amenities
+```{r }
+vars <- c("id", "listing_url", "price", "size", "neighbourhood_group_cleansed", "property_type", "room_type",
+           "accommodates","wifi", "tv", "pool", "altbau", "cooking_basics", "bed_linens", "parking",
+          "garden", "n_restaurants", "n_attractions", "stop_dist")
+
+df <- df %>% select(all_of(vars)) %>% drop_na() %>% st_as_sf()
+obj <- df %>% filter(id==8716837) %>% select(vars) %>% st_transform(3035)
+View(obj)
+obj_300 <- obj %>% st_buffer(dist = 300) 
+obj_1000 <- obj_300 %>% st_buffer(dist = 700) 
+test <- lm(price ~ size , df)
+broom::augment_columns(test, data = df) %>% relocate(c(.fitted, .resid), .after = price) %>%View()
+model.frame(test)
+
+tmap_mode("view")
+tm_shape(districts) + tm_fill(col = "name", legend.show = FALSE, group = 1) + 
+  tm_borders(col = "black") +
+  tm_shape(obj) + tm_dots(size = 0.1, id = "listing_url")
 ```
+
+```{r}
+districts <- districts %>% st_transform(3035)
+restaurants <- restaurants %>% st_transform(3035) %>% mutate(type = "Restaurant")
+attractions <- attractions %>% st_transform(3035) %>% mutate(type = "Attraction")
+stops <- stops %>% st_transform(3035) %>% mutate(type = "Train/tram stop")
+
+idx <- districts %>% st_intersects(obj_1000,sparse = FALSE) 
+districts_subset <- districts[idx,]
+idx <- restaurants %>% st_intersects(obj_1000, sparse = FALSE) 
+restaurants_subset <- restaurants[idx,]
+idx <- attractions %>% st_intersects(obj_1000, sparse = FALSE) 
+attractions_subset <- attractions[idx,]
+idx <- stops %>% st_intersects(obj_1000, sparse = FALSE) 
+stops_subset <- stops[idx,]
+subset <- list(restaurants_subset, attractions_subset, stops_subset) %>% bind_rows()
+subset <- subset %>% select(name, cuisine, type, opening_hours)
+
+tmap_mode("view")
+tm_shape(districts_subset) + tm_fill(col = "name", alpha = 0.3, palette = "YlOrRd") + tm_shape(obj) + tm_dots("black", size = 0.1) +
+  tm_shape(obj_300) + tm_borders("black", lwd = 1) + 
+  tm_shape(obj_1000, is.master = TRUE) + tm_borders("black", lwd = 1) +
+  tm_shape(subset) + tm_dots(col = "type", size = 0.05, palette = "Set1", 
+                             popup.var = c("type", "cuisine", "opening_hours"))
+
+```
+
 
