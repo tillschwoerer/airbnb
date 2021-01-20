@@ -19,9 +19,10 @@ airbnb <- read_csv("orig/listings.csv")
 
 # Pre-select columns
 airbnb <- airbnb %>% 
-  select(id, listing_url, description, amenities, host_response_time, neighbourhood_cleansed,
-         neighbourhood_group_cleansed, latitude, longitude, property_type, room_type, 
-         accommodates, bathrooms_text, bedrooms, beds, price, number_of_reviews, review_scores_rating)
+  select(id, listing_url, listing_name = name, description, picture_url, amenities, 
+         host_response_time, neighbourhood_cleansed, neighbourhood_group_cleansed, latitude, 
+         longitude, property_type, room_type, accommodates, bathrooms_text, bedrooms, beds, 
+         price, number_of_reviews, review_scores_rating)
 
 # Cast column type
 airbnb <- airbnb %>% mutate(price = as.numeric(str_sub(price, 2))) %>% relocate(price, .after=2)
