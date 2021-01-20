@@ -22,7 +22,6 @@ library(tidyverse)
 library(sf)
 library(tmap)
 load("data/prepared_data.Rdat")
-View(df)
 source("R/helper.R")
 ```
 
@@ -33,7 +32,7 @@ options(scipen = 999)
 ```
 
 ```{r}
-model1 <- lm(price ~ room_type + size, data = df)
+model1 <- lm(price ~ size, data = df)
 summary(model1)
 broom::augment(model1)
 jtools::plot_summs(model1, ci_level = 0.99, inner_ci_level = 0.9)
@@ -45,17 +44,22 @@ model <- lm(price ~ room_type + size + I(cut_number(n_restaurants, 4)), data = d
 summary(model)
 vis_residuals(model, df, textsize = 0.7, mode = "view")
 ```
+
 ```{r}
-model3 <- lm(log(price) ~  beds  + room_type + accommodates + tv + bed_linens + parking + garden + coffeemaker + pool + bathtub + cooking_basics + gym + altbau + n_restaurants + n_attractions + stop_dist, data = df)
+model3 <- lm(price ~  accommodates + room_type + tv + wifi + pool + altbau + parking + n_restaurants + n_attractions + stop_dist, data = df)
 summary(model3)
 augmented <- broom::augment(model3) %>% relocate(c(.fitted, .resid), .after = price)
-View(augmented)
-df[2107,]
-log(110)
 ```
 
+```{r}
+vis_residuals(model3, data = df, mode = "view")
+```
 
 ```{r}
+names(df)
+model4 <- lm(price ~ bedrooms + bed_linens + garden + coffeemaker + bathtub + gym + cooking_basics +  accommodates + room_type + tv + wifi + pool + altbau + parking + n_restaurants + n_attractions + stop_dist, data = df)
+summary(model4)
+
 jtools::plot_summs(model2, model3, scale = TRUE, ci_level = 0.99, inner_ci_level = 0.95)
 jtools::summ(model3, vifs = TRUE)
 jtools::plot_summs(model3, model3, model3, scale = TRUE, robust = list(FALSE, "HC0", "HC3"),

@@ -34,6 +34,14 @@ load("data/prepared_data.Rdat")
 df %>% count(accommodates)
 
 # Aggregates
+vars <- c("n", "price", "size", "accomodates", "pool", ".resid")
+
+df %>% 
+  filter(accommodates==2) %>%
+  group_by(name) %>% 
+  summarise(across(all_of(vars), mean, na.rm=TRUE))
+
+
 df_districts <- df %>% 
   filter(accommodates==2) %>%
   group_by(name) %>% 
@@ -42,6 +50,9 @@ df_districts <- df %>%
             stop_distance = round(mean(stop_dist, na.rm=TRUE)) 
             ) %>%
   st_drop_geometry()
+
+
+
 
 districts %>% 
   inner_join(df_districts, by = "name") %>%
